@@ -191,6 +191,27 @@ hr.sep{border:none;border-top:1px solid var(--border);margin:20px 0}
   .btn-group,.btn,.cert-print-bar{display:none!important}
   @page{size:A4;margin:10mm}
 }
+
+/* ── Row colour coding in results table ── */
+tr.row-ganador td { background: #3ddc8414 !important; }
+tr.row-ganador td:first-child { color: var(--green); font-weight: 700; }
+tr.row-espera  td { background: #f5c84214 !important; }
+tr.row-espera  td:first-child { color: var(--gold); font-weight: 700; }
+
+/* ── Certificate — winner number chips ── */
+.cert-num-grid {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  margin: 8px 0 20px;
+}
+.cert-num-chip {
+  background: #e8f0fe; border: 1px solid #1e3a8a33;
+  border-radius: 5px; padding: 4px 10px;
+  font-family: 'Courier New', monospace;
+  font-size: 13px; font-weight: 700; color: #1e3a8a;
+}
+
+/* ── Sort button active state ── */
+.btn-sort-toggle.sorted { background: var(--green); color: #0d3320; }
 </style>
 </head>
 <body>
@@ -294,6 +315,12 @@ hr.sep{border:none;border-top:1px solid var(--border);margin:20px 0}
         <label class="field">Plazas sorteo general</label>
         <input type="number" id="plazasGeneral" value="480" min="1">
       </div>
+      <div>
+        <label class="field">Columna de número del participante</label>
+        <select id="numCol">
+          <option value="">— Primera columna del fichero —</option>
+        </select>
+      </div>
     </div>
 
     <div class="info-box" id="infoBox"></div>
@@ -315,6 +342,7 @@ hr.sep{border:none;border-top:1px solid var(--border);margin:20px 0}
     <div class="tabs" id="tabsRow"></div>
     <div class="table-wrap" id="tableWrap"></div>
     <div class="btn-group">
+      <button class="btn btn-muted btn-sort-toggle" id="btnSort" onclick="toggleSort()">⇅ Ordenar de menor a mayor</button>
       <button class="btn btn-green" onclick="exportExcel()">⬇ Exportar Excel completo</button>
       <button class="btn btn-gold"  onclick="showCert()">📜 Generar certificado</button>
       <span class="note">El Excel incluye ganadores + lista de espera + hoja de certificado</span>
@@ -351,7 +379,8 @@ let allRows       = [];
 let columns       = [];
 let sorteoResults = null;
 let sorteoMeta    = null;
-let activeTab     = 'pmrGanadores';
+let activeTab     = 'pmr';
+let sortedAsc     = false;
 
 /* Drag & drop */
 const dz = document.getElementById('dropzone');
@@ -385,6 +414,10 @@ function handleFile(file) {
 
     const guess = columns.find(c => /pmr|discapacidad|movilidad|reducida/i.test(c));
     if (guess) sel.value = guess;
+
+    const numSel = document.getElementById('numCol');
+    numSel.innerHTML = '<option value="">— Primera columna del fichero —</option>' +
+      columns.map(c => `<option value="${c}">${c}</option>`).join('');
 
     document.getElementById('config-section').style.display = 'block';
     setStep(2);
@@ -434,6 +467,11 @@ async function sha256(str) {
 function genId() {
   return 'SRT-' + Date.now().toString(36).toUpperCase() +
     '-' + Math.random().toString(36).slice(2,6).toUpperCase();
+}
+
+function getNumKey(row) {
+  const chosen = document.getElementById('numCol')?.value;
+  return chosen || Object.keys(row || {})[0];
 }
 
 /* ── Ejecutar sorteo ── */
@@ -488,6 +526,7 @@ async function runSorteo() {
 
 function resetResults() {
   sorteoResults = sorteoMeta = null;
+  sortedAsc = false;
   ['results-section','cert-section'].forEach(id =>
     document.getElementById(id).style.display = 'none');
   document.getElementById('btnRepetir').style.display = 'none';
@@ -504,16 +543,15 @@ function renderResults() {
   const r = sorteoResults;
   document.getElementById('statsRow').innerHTML = `
     <div class="stat-box neutral"><div class="stat-num c-text">${r.total.toLocaleString('es-ES')}</div><div class="stat-label">Total inscritos</div></div>
-    <div class="stat-box gold"><div class="stat-num c-gold">${r.pmrGanadores.length}</div><div class="stat-label">Ganadores PMR</div></div>
+    <div class="stat-box gold"><div class="stat-num c-gold">${r.pmrGanadores.length}</div><div class="stat-label">Agraciados PMR</div></div>
     <div class="stat-box neutral"><div class="stat-num c-text">${r.pmrEspera.length}</div><div class="stat-label">Espera PMR</div></div>
-    <div class="stat-box blue"><div class="stat-num c-blue">${r.generalGanadores.length}</div><div class="stat-label">Ganadores General</div></div>
+    <div class="stat-box blue"><div class="stat-num c-blue">${r.generalGanadores.length}</div><div class="stat-label">Agraciados General</div></div>
     <div class="stat-box neutral"><div class="stat-num c-text">${r.generalEspera.length}</div><div class="stat-label">Espera General</div></div>`;
 
+  activeTab = 'pmr';
   const tabs = [
-    {id:'pmrGanadores',     label:`🟡 PMR Ganadores (${r.pmrGanadores.length})`},
-    {id:'pmrEspera',        label:`PMR Espera (${r.pmrEspera.length})`},
-    {id:'generalGanadores', label:`🔵 General Ganadores (${r.generalGanadores.length})`},
-    {id:'generalEspera',    label:`General Espera (${r.generalEspera.length})`},
+    {id:'pmr',     label:`🟡 PMR (${r.pmrGanadores.length} agraciados · ${r.pmrEspera.length} espera)`},
+    {id:'general', label:`🔵 General (${r.generalGanadores.length} agraciados · ${r.generalEspera.length} espera)`},
   ];
   document.getElementById('tabsRow').innerHTML = tabs
     .map(t=>`<button class="tab-btn${t.id===activeTab?' active':''}" onclick="switchTab('${t.id}')">${t.label}</button>`)
@@ -527,34 +565,75 @@ function renderResults() {
 
 function switchTab(id) {
   activeTab = id;
+  sortedAsc = false;
+  const sortBtn = document.getElementById('btnSort');
+  if (sortBtn) { sortBtn.textContent = '⇅ Ordenar de menor a mayor'; sortBtn.classList.remove('sorted'); }
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
   event.target.classList.add('active');
   renderTable(id);
 }
 
+function toggleSort() {
+  sortedAsc = !sortedAsc;
+  const btn = document.getElementById('btnSort');
+  btn.textContent = sortedAsc ? '⇅ Orden original (sorteo)' : '⇅ Ordenar de menor a mayor';
+  btn.classList.toggle('sorted', sortedAsc);
+  renderTable(activeTab);
+}
+
 function renderTable(id) {
-  const data = sorteoResults[id];
-  if (!data.length) {
+  const r = sorteoResults;
+  let ganadores, espera;
+  if (id === 'pmr') {
+    ganadores = r.pmrGanadores;
+    espera    = r.pmrEspera;
+  } else {
+    ganadores = r.generalGanadores;
+    espera    = r.generalEspera;
+  }
+
+  const combined = [
+    ...ganadores.map((row, i) => ({ pos: i + 1, status: 'ganador', row })),
+    ...espera.map((row, i)    => ({ pos: i + 1, status: 'espera',  row })),
+  ];
+
+  if (!combined.length) {
     document.getElementById('tableWrap').innerHTML =
       '<p style="padding:16px;color:var(--muted);font-size:13px">Sin datos</p>';
     return;
   }
-  const cols = Object.keys(data[0]);
-  const rows = data.slice(0, 500);
+
+  const idCol = getNumKey(combined[0].row);
+
+  const display = sortedAsc
+    ? [...combined].sort((a, b) => {
+        const av = a.row[idCol], bv = b.row[idCol];
+        const an = parseFloat(av), bn = parseFloat(bv);
+        return !isNaN(an) && !isNaN(bn) ? an - bn : String(av).localeCompare(String(bv), 'es');
+      })
+    : combined;
+
   document.getElementById('tableWrap').innerHTML = `
     <table>
       <thead><tr>
-        <th class="pos-cell">#</th>
-        ${cols.map(c=>`<th>${c}</th>`).join('')}
+        <th class="pos-cell">Pos.</th>
+        <th>${idCol}</th>
+        <th>Estado</th>
       </tr></thead>
       <tbody>
-        ${rows.map((row,i)=>`<tr>
-          <td class="pos-cell">${i+1}</td>
-          ${cols.map(c=>`<td>${String(row[c])}</td>`).join('')}
-        </tr>`).join('')}
+        ${display.slice(0, 500).map(({ pos, status, row }) => `
+          <tr class="row-${status}">
+            <td class="pos-cell">${pos}</td>
+            <td>${String(row[idCol])}</td>
+            <td>${status === 'ganador'
+              ? '<span style="color:var(--green);font-weight:700">✓ Agraciado</span>'
+              : '<span style="color:var(--gold)">⏳ Espera</span>'}</td>
+          </tr>`).join('')}
       </tbody>
     </table>
-    ${data.length>500?`<p style="padding:10px 12px;font-size:12px;color:var(--muted)">Mostrando 500 de ${data.length} — exporta Excel para verlos todos</p>`:''}`;
+    ${combined.length > 500
+      ? `<p style="padding:10px 12px;font-size:12px;color:var(--muted)">Mostrando 500 de ${combined.length} — exporta Excel para verlos todos</p>`
+      : ''}`;
 }
 
 /* ── Exportar Excel ── */
@@ -608,15 +687,15 @@ function showCert() {
   const car = g('cfgCargo')       || '___________________________';
   const lug = g('cfgLugar')       || '___________________________';
 
-  const sampleRows = (arr) => {
-    const cols = Object.keys(arr[0] || {}).slice(0,4);
-    return arr.slice(0,5).map((row,i) =>
-      `<tr><td>${i+1}</td>${cols.map(c=>`<td>${String(row[c])}</td>`).join('')}</tr>`
-    ).join('');
-  };
-  const sampleHeaders = (arr) => {
-    const cols = Object.keys(arr[0] || {}).slice(0,4);
-    return `<th>#</th>${cols.map(c=>`<th>${c}</th>`).join('')}`;
+  const winnerNumbers = (arr) => {
+    if (!arr.length) return '<em style="color:#9ca3af">Sin adjudicatarios</em>';
+    const idCol = getNumKey(arr[0]);
+    const nums  = arr.map(row => row[idCol]);
+    nums.sort((a, b) => {
+      const an = parseFloat(a), bn = parseFloat(b);
+      return !isNaN(an) && !isNaN(bn) ? an - bn : String(a).localeCompare(String(b), 'es');
+    });
+    return nums.map(n => `<span class="cert-num-chip">${String(n)}</span>`).join('');
   };
 
   document.getElementById('certInner').innerHTML = `
@@ -687,20 +766,16 @@ function showCert() {
     </table>
 
     <p style="font-size:12px;color:#374151;margin-bottom:6px;font-weight:600">
-      Primeros 5 adjudicatarios — Sorteo PMR:
+      Números agraciados — Sorteo PMR
+      <span style="font-size:11px;font-weight:400;color:#6b7280">(ordenados de menor a mayor)</span>:
     </p>
-    <table class="cert-table" style="margin-bottom:18px">
-      <thead><tr>${sampleHeaders(r.pmrGanadores)}</tr></thead>
-      <tbody>${sampleRows(r.pmrGanadores)}</tbody>
-    </table>
+    <div class="cert-num-grid">${winnerNumbers(r.pmrGanadores)}</div>
 
     <p style="font-size:12px;color:#374151;margin-bottom:6px;font-weight:600">
-      Primeros 5 adjudicatarios — Sorteo Público General:
+      Números agraciados — Sorteo Público General
+      <span style="font-size:11px;font-weight:400;color:#6b7280">(ordenados de menor a mayor)</span>:
     </p>
-    <table class="cert-table" style="margin-bottom:20px">
-      <thead><tr>${sampleHeaders(r.generalGanadores)}</tr></thead>
-      <tbody>${sampleRows(r.generalGanadores)}</tbody>
-    </table>
+    <div class="cert-num-grid">${winnerNumbers(r.generalGanadores)}</div>
 
     <p style="font-size:12px;color:#374151;margin-bottom:14px;font-style:italic">
       La relación completa de adjudicatarios y lista de espera figura como <strong>Anexo I</strong>
