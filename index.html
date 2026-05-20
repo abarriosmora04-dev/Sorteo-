@@ -379,7 +379,7 @@ let allRows       = [];
 let columns       = [];
 let sorteoResults = null;
 let sorteoMeta    = null;
-let activeTab     = 'pmr';
+let activeTab     = 'pmrGanadores';
 let sortedAsc     = false;
 
 /* Drag & drop */
@@ -548,10 +548,12 @@ function renderResults() {
     <div class="stat-box blue"><div class="stat-num c-blue">${r.generalGanadores.length}</div><div class="stat-label">Agraciados General</div></div>
     <div class="stat-box neutral"><div class="stat-num c-text">${r.generalEspera.length}</div><div class="stat-label">Espera General</div></div>`;
 
-  activeTab = 'pmr';
+  activeTab = 'pmrGanadores';
   const tabs = [
-    {id:'pmr',     label:`🟡 PMR (${r.pmrGanadores.length} agraciados · ${r.pmrEspera.length} espera)`},
-    {id:'general', label:`🔵 General (${r.generalGanadores.length} agraciados · ${r.generalEspera.length} espera)`},
+    {id:'pmrGanadores',     label:`🟡 Agraciados PMR (${r.pmrGanadores.length})`},
+    {id:'pmrEspera',        label:`PMR Espera (${r.pmrEspera.length})`},
+    {id:'generalGanadores', label:`🔵 Agraciados General (${r.generalGanadores.length})`},
+    {id:'generalEspera',    label:`General Espera (${r.generalEspera.length})`},
   ];
   document.getElementById('tabsRow').innerHTML = tabs
     .map(t=>`<button class="tab-btn${t.id===activeTab?' active':''}" onclick="switchTab('${t.id}')">${t.label}</button>`)
@@ -582,57 +584,43 @@ function toggleSort() {
 }
 
 function renderTable(id) {
-  const r = sorteoResults;
-  let ganadores, espera;
-  if (id === 'pmr') {
-    ganadores = r.pmrGanadores;
-    espera    = r.pmrEspera;
-  } else {
-    ganadores = r.generalGanadores;
-    espera    = r.generalEspera;
-  }
+  const r         = sorteoResults;
+  const data      = r[id];
+  const isGanador = id === 'pmrGanadores' || id === 'generalGanadores';
+  const rowClass  = isGanador ? 'ganador' : 'espera';
 
-  const combined = [
-    ...ganadores.map((row, i) => ({ pos: i + 1, status: 'ganador', row })),
-    ...espera.map((row, i)    => ({ pos: i + 1, status: 'espera',  row })),
-  ];
-
-  if (!combined.length) {
+  if (!data.length) {
     document.getElementById('tableWrap').innerHTML =
       '<p style="padding:16px;color:var(--muted);font-size:13px">Sin datos</p>';
     return;
   }
 
-  const idCol = getNumKey(combined[0].row);
+  const idCol = getNumKey(data[0]);
 
   const display = sortedAsc
-    ? [...combined].sort((a, b) => {
-        const av = a.row[idCol], bv = b.row[idCol];
+    ? [...data].sort((a, b) => {
+        const av = a[idCol], bv = b[idCol];
         const an = parseFloat(av), bn = parseFloat(bv);
         return !isNaN(an) && !isNaN(bn) ? an - bn : String(av).localeCompare(String(bv), 'es');
       })
-    : combined;
+    : data;
 
   document.getElementById('tableWrap').innerHTML = `
     <table>
       <thead><tr>
         <th class="pos-cell">Pos.</th>
         <th>${idCol}</th>
-        <th>Estado</th>
       </tr></thead>
       <tbody>
-        ${display.slice(0, 500).map(({ pos, status, row }) => `
-          <tr class="row-${status}">
-            <td class="pos-cell">${pos}</td>
+        ${display.slice(0, 500).map((row, i) => `
+          <tr class="row-${rowClass}">
+            <td class="pos-cell">${i + 1}</td>
             <td>${String(row[idCol])}</td>
-            <td>${status === 'ganador'
-              ? '<span style="color:var(--green);font-weight:700">✓ Agraciado</span>'
-              : '<span style="color:var(--gold)">⏳ Espera</span>'}</td>
           </tr>`).join('')}
       </tbody>
     </table>
-    ${combined.length > 500
-      ? `<p style="padding:10px 12px;font-size:12px;color:var(--muted)">Mostrando 500 de ${combined.length} — exporta Excel para verlos todos</p>`
+    ${data.length > 500
+      ? `<p style="padding:10px 12px;font-size:12px;color:var(--muted)">Mostrando 500 de ${data.length} — exporta Excel para verlos todos</p>`
       : ''}`;
 }
 
